@@ -1,0 +1,400 @@
+package app.ui;
+
+import app.dao.ProductoDAO;
+import app.dao.VentaDAO;
+import app.models.Venta;
+import app.util.UIConstants;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.io.FileWriter;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.awt.Desktop;
+
+public class PedidosPanel extends JPanel {
+    private CardLayout vista;
+    private JPanel contenedor;
+
+    // menú por categorías y mapa plano para buscar precio rápido
+    private final Map<String, Map<String, Double>> menuPorCategorias = new LinkedHashMap<>();
+    private final Map<String, Double> menuFlat = new LinkedHashMap<>();
+
+    private final Map<String, Integer> carrito = new LinkedHashMap<>();
+    private final Map<String, String> images = new LinkedHashMap<>();
+    private static final double IGV = 0.18;
+
+    private DefaultListModel<String> cartModel;
+    private JLabel subtotalLbl, igvLbl, totalLbl;
+    private JButton checkoutBtn;
+    private ProductoDAO productoDAO = new ProductoDAO();
+    private VentaDAO ventaDAO = new VentaDAO();
+
+    public PedidosPanel() {
+        setLayout(new BorderLayout());
+        inicializarMenuPorCategorias();
+        vista = new CardLayout();
+        contenedor = new JPanel(vista);
+        contenedor.add(crearVistaBienvenida(), "bienvenida");
+        contenedor.add(crearVistaPedidos(), "pedidos");
+        add(contenedor, BorderLayout.CENTER);
+        vista.show(contenedor, "bienvenida");
+    }
+
+    // ---------- Inicialización del menú (categorías) ----------
+    private void inicializarMenuPorCategorias() {
+        Map<String, Double> combos = new LinkedHashMap<>();
+        combos.put("Combo Clásico", 21.90);
+        combos.put("Mega Combo Familiar", 49.90);
+        combos.put("Combo Crispy", 23.50);
+        combos.put("Combo Pollo BBQ", 24.00);
+        combos.put("Combo Doble", 27.00);
+        combos.put("Combo Familiar Especial", 60.00);
+        combos.put("Combo Twister", 20.00);
+        combos.put("Combo Papa + Pollo", 25.00);
+        combos.put("Combo Hamburguesa + Papas", 22.00);
+        combos.put("Combo Sándwich", 19.00);
+
+        Map<String, Double> hamburguesas = new LinkedHashMap<>();
+        hamburguesas.put("Twister BBQ", 12.50);
+        hamburguesas.put("Hamburguesa Crispy", 10.00);
+        hamburguesas.put("Hamburguesa BBQ", 11.00);
+        hamburguesas.put("Hamburguesa Pollo", 9.50);
+        hamburguesas.put("Hamburguesa Doble", 14.00);
+        hamburguesas.put("Hamburguesa Bacon", 15.00);
+        hamburguesas.put("Hamburguesa Queso", 13.00);
+        hamburguesas.put("Hamburguesa Veggie", 12.00);
+        hamburguesas.put("Hamburguesa BBQ Bacon", 16.00);
+        hamburguesas.put("Hamburguesa Deluxe", 18.00);
+
+        Map<String, Double> bebidas = new LinkedHashMap<>();
+        bebidas.put("Inka Kola 500 ml", 5.00);
+        bebidas.put("Chicha Morada 1L", 6.50);
+        bebidas.put("Agua Mineral 500 ml", 3.00);
+        bebidas.put("Gaseosa Coca-Cola 500 ml", 4.50);
+        bebidas.put("Gaseosa Coca-Cola 1L", 8.00);
+        bebidas.put("Jugo de Naranja", 5.50);
+        bebidas.put("Jugo de Piña", 5.50);
+        bebidas.put("Cerveza", 10.00);
+        bebidas.put("Limonada", 6.00);
+        bebidas.put("Té Helado", 4.00);
+
+        Map<String, Double> postres = new LinkedHashMap<>();
+        postres.put("Pie de Manzana", 4.50);
+        postres.put("Brownie", 5.00);
+        postres.put("Helado Vainilla", 4.00);
+        postres.put("Pastel de Queso", 6.00);
+        postres.put("Galletas", 3.50);
+        postres.put("Flan", 5.50);
+        postres.put("Tarta de Limón", 6.50);
+        postres.put("Mousse de Chocolate", 7.00);
+        postres.put("Pudding de Caramelo", 5.00);
+        postres.put("Tiramisú", 7.50);
+
+        Map<String, Double> acompanamientos = new LinkedHashMap<>();
+        acompanamientos.put("Papas Medianas", 6.00);
+        acompanamientos.put("Papas Grandes", 8.00);
+        acompanamientos.put("Ensalada César", 9.00);
+        acompanamientos.put("Aros de Cebolla", 7.50);
+        acompanamientos.put("Choclo Asado", 6.50);
+        acompanamientos.put("Arroz Blanco", 5.00);
+        acompanamientos.put("Frijoles", 5.50);
+        acompanamientos.put("Panecillos", 3.00);
+        acompanamientos.put("Salsa BBQ Extra", 2.00);
+
+        menuPorCategorias.put("Combos", combos);
+        menuPorCategorias.put("Hamburguesas", hamburguesas);
+        menuPorCategorias.put("Bebidas", bebidas);
+        menuPorCategorias.put("Postres", postres);
+        menuPorCategorias.put("Acompañamientos", acompanamientos);
+
+        // imágenes (completa con tus rutas)
+        images.put("Combo Clásico", "img/combo_clasico.png");
+        images.put("Mega Combo Familiar", "img/mega_combo.png");
+        images.put("Combo Crispy", "img/combo_crispy.png");
+        images.put("Twister BBQ", "img/twister_bbq.png");
+        images.put("Hamburguesa Crispy", "img/hamburguesa_crispy.png");
+        images.put("Inka Kola 500 ml", "img/inka.png");
+        images.put("Pie de Manzana", "img/pie.png");
+        images.put("Papas Medianas", "img/papas.png");
+
+        // ----- construir mapa plano (nombre -> precio) para usar en carrito/totales -----
+        menuFlat.clear();
+        for (var cat : menuPorCategorias.entrySet()) {
+            for (var prod : cat.getValue().entrySet()) {
+                menuFlat.put(prod.getKey(), prod.getValue());
+            }
+        }
+    }
+
+    // ---------- Vistas ----------
+    private JPanel crearVistaBienvenida() {
+        JPanel bienvenida = new JPanel(new BorderLayout());
+        bienvenida.setBackground(UIConstants.APP_BLUE);
+
+        JLabel titulo = new JLabel("¡Bienvenido a FastFood!", SwingConstants.CENTER);
+        titulo.setFont(new Font("Arial Black", Font.BOLD, 36));
+        titulo.setForeground(Color.WHITE);
+        titulo.setBorder(new EmptyBorder(40, 10, 10, 10));
+
+        JLabel subtitulo = new JLabel("Haz tu pedido o pide delivery 😋🍔", SwingConstants.CENTER);
+        subtitulo.setFont(new Font("Arial", Font.PLAIN, 20));
+        subtitulo.setForeground(Color.WHITE);
+
+        JButton empezar = new JButton("Iniciar pedido");
+        estiloBoton(empezar, Color.WHITE, UIConstants.APP_BLUE);
+        empezar.setFont(new Font("Arial", Font.BOLD, 18));
+        empezar.addActionListener(e -> vista.show(contenedor, "pedidos"));
+
+        JPanel centro = new JPanel(new BorderLayout());
+        centro.setOpaque(false);
+        centro.add(titulo, BorderLayout.NORTH);
+        centro.add(subtitulo, BorderLayout.CENTER);
+
+        JPanel sur = new JPanel();
+        sur.setOpaque(false);
+        sur.add(empezar);
+
+        bienvenida.add(centro, BorderLayout.CENTER);
+        bienvenida.add(sur, BorderLayout.SOUTH);
+
+        return bienvenida;
+    }
+
+    private JPanel crearVistaPedidos() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(UIConstants.APP_WHITE);
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(UIConstants.APP_BLUE);
+        header.setBorder(new EmptyBorder(5, 20, 5, 20));
+        JLabel logo = new JLabel();
+        ImageIcon logoIcon = new ImageIcon("img/kfc_logo.png");
+        if (logoIcon.getIconWidth() > 0) logo.setIcon(logoIcon);
+        else {
+            logo.setText("FastFood");
+            logo.setForeground(Color.WHITE);
+            logo.setFont(new Font("Arial Black", Font.BOLD, 18));
+        }
+        header.add(logo, BorderLayout.WEST);
+        panel.add(header, BorderLayout.NORTH);
+
+        JPanel central = new JPanel(new BorderLayout());
+        central.setBackground(UIConstants.APP_WHITE);
+        panel.add(central, BorderLayout.CENTER);
+
+        // GRID catálogo (mostramos categorías + productos)
+        JPanel catalogoGrid = new JPanel(new GridLayout(0, 2, 20, 20));
+        catalogoGrid.setBackground(UIConstants.APP_WHITE);
+        catalogoGrid.setBorder(new EmptyBorder(20, 20, 20, 20));
+
+        for (var categoria : menuPorCategorias.entrySet()) {
+            // título categoría (ocupa una celda)
+            JLabel tituloCat = new JLabel(categoria.getKey());
+            tituloCat.setFont(new Font("Arial Black", Font.BOLD, 22));
+            tituloCat.setForeground(UIConstants.APP_BLUE);
+            catalogoGrid.add(tituloCat);
+
+            // productos de la categoría
+            for (var entry : categoria.getValue().entrySet()) {
+                catalogoGrid.add(crearTarjetaProducto(entry.getKey(), entry.getValue(), images.get(entry.getKey())));
+            }
+        }
+
+        JScrollPane catalogoScroll = new JScrollPane(catalogoGrid);
+        catalogoScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        central.add(catalogoScroll, BorderLayout.CENTER);
+
+        // PANEL CARRITO (asegurar cartModel inicializado)
+        JPanel cartPanel = new JPanel(new BorderLayout(5, 5));
+        cartPanel.setPreferredSize(new Dimension(340, getHeight()));
+        cartPanel.setBackground(UIConstants.APP_WHITE);
+        cartPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+
+        JLabel cartTitle = new JLabel("TU PEDIDO");
+        cartTitle.setFont(UIConstants.TITLE_FONT);
+        cartTitle.setForeground(UIConstants.APP_BLUE);
+        cartPanel.add(cartTitle, BorderLayout.NORTH);
+
+        cartModel = new DefaultListModel<>();
+        JList<String> cartList = new JList<>(cartModel);
+        cartList.setFont(UIConstants.LABEL_FONT);
+        JScrollPane cartScroll = new JScrollPane(cartList);
+        cartPanel.add(cartScroll, BorderLayout.CENTER);
+
+        JPanel totalsPanel = new JPanel(new GridLayout(3, 1));
+        totalsPanel.setBackground(UIConstants.APP_WHITE);
+        subtotalLbl = new JLabel("Subtotal: S/ 0.00");
+        igvLbl = new JLabel("IGV (18%): S/ 0.00");
+        totalLbl = new JLabel("Total: S/ 0.00");
+        for (JLabel lbl : new JLabel[]{subtotalLbl, igvLbl, totalLbl}) {
+            lbl.setFont(UIConstants.LABEL_FONT);
+            totalsPanel.add(lbl);
+        }
+        cartPanel.add(totalsPanel, BorderLayout.SOUTH);
+        central.add(cartPanel, BorderLayout.EAST);
+
+        // acciónes
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        actionPanel.setBackground(UIConstants.APP_WHITE);
+
+        JButton clearBtn = new JButton("Vaciar carrito");
+        estiloBoton(clearBtn, UIConstants.APP_BLUE.darker(), Color.WHITE);
+        clearBtn.addActionListener(e -> vaciarCarrito());
+
+        checkoutBtn = new JButton("Finalizar compra");
+        estiloBoton(checkoutBtn, UIConstants.APP_DARK, Color.WHITE);
+        checkoutBtn.setEnabled(false);
+        checkoutBtn.addActionListener(this::onCheckout);
+
+        JButton deliveryBtn = new JButton("Delivery por WhatsApp");
+        estiloBoton(deliveryBtn, new Color(37, 211, 102), Color.WHITE);
+        deliveryBtn.addActionListener(e -> abrirWhatsApp());
+
+        actionPanel.add(clearBtn);
+        actionPanel.add(deliveryBtn);
+        actionPanel.add(checkoutBtn);
+        panel.add(actionPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    // ---------- utilidades para acciones ----------
+    private void abrirWhatsApp() {
+        String mensaje = generarMensajeWhatsapp();
+        String numero = "955712568";
+        String url = "https://wa.me/51" + numero + "?text=" + mensaje.replace(" ", "%20");
+        try {
+            Desktop.getDesktop().browse(new URI(url));
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "No se pudo abrir WhatsApp.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private String generarMensajeWhatsapp() {
+        if (carrito.isEmpty()) return "Hola! Aún no he seleccionado ningún producto.";
+        StringBuilder sb = new StringBuilder("Hola! Quiero hacer un pedido desde la app FastFood:\n\n");
+        double subtotal = 0.0;
+        for (var e : carrito.entrySet()) {
+            String nombre = e.getKey();
+            int cant = e.getValue();
+            double precio = menuFlat.getOrDefault(nombre, 0.0);
+            sb.append(String.format("- %s x%d: S/ %.2f\n", nombre, cant, precio * cant));
+            subtotal += precio * cant;
+        }
+        double igv = subtotal * IGV;
+        double total = subtotal + igv;
+        sb.append(String.format("\nSubtotal: S/ %.2f\nIGV (18%%): S/ %.2f\nTotal: S/ %.2f\n\nGracias!", subtotal, igv, total));
+        return sb.toString();
+    }
+
+    private JPanel crearTarjetaProducto(String nombre, double precio, String rutaImg) {
+        JPanel card = new JPanel(new BorderLayout());
+        card.setBackground(UIConstants.APP_WHITE);
+        card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(0xDDDDDD)), new EmptyBorder(10, 10, 10, 10)));
+
+        JLabel imgLbl = new JLabel();
+        imgLbl.setHorizontalAlignment(SwingConstants.CENTER);
+        ImageIcon icon = rutaImg != null ? new ImageIcon(rutaImg) : null;
+        if (icon != null && icon.getIconWidth() > 0) {
+            imgLbl.setIcon(new ImageIcon(icon.getImage().getScaledInstance(150, 110, Image.SCALE_SMOOTH)));
+        } else {
+            imgLbl.setText("[imagen]");
+            imgLbl.setHorizontalAlignment(SwingConstants.CENTER);
+        }
+        card.add(imgLbl, BorderLayout.NORTH);
+
+        JLabel nameLbl = new JLabel("<html><center>" + nombre + "</center></html>");
+        nameLbl.setFont(UIConstants.LABEL_FONT);
+        nameLbl.setHorizontalAlignment(SwingConstants.CENTER);
+        nameLbl.setBorder(new EmptyBorder(5, 0, 5, 0));
+        card.add(nameLbl, BorderLayout.CENTER);
+
+        JLabel priceLbl = new JLabel(String.format("S/ %.2f", precio));
+        priceLbl.setHorizontalAlignment(SwingConstants.CENTER);
+        priceLbl.setFont(new Font("Arial Black", Font.BOLD, 16));
+        priceLbl.setForeground(UIConstants.APP_BLUE);
+
+        JButton addBtn = new JButton("Añadir");
+        estiloBoton(addBtn, UIConstants.APP_BLUE, Color.WHITE);
+        addBtn.addActionListener(e -> {
+            // actualizar carrito y la vista
+            carrito.put(nombre, carrito.getOrDefault(nombre, 0) + 1);
+            actualizarCarritoVista();
+        });
+
+        JPanel south = new JPanel(new GridLayout(2, 1));
+        south.setBackground(UIConstants.APP_WHITE);
+        south.add(priceLbl);
+        south.add(addBtn);
+        card.add(south, BorderLayout.SOUTH);
+
+        return card;
+    }
+
+    private void estiloBoton(JButton btn, Color bg, Color fg) {
+        btn.setBackground(bg);
+        btn.setForeground(fg);
+        btn.setFocusPainted(false);
+        btn.setFont(UIConstants.LABEL_FONT);
+        btn.setBorderPainted(false);
+        btn.setOpaque(true);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    }
+
+    private void vaciarCarrito() {
+        carrito.clear();
+        actualizarCarritoVista();
+    }
+
+    private void actualizarCarritoVista() {
+        if (cartModel == null) return;
+        cartModel.clear();
+        double subtotal = 0.0;
+        for (var entry : carrito.entrySet()) {
+            String nombre = entry.getKey();
+            int cantidad = entry.getValue();
+            double precioUnit = menuFlat.getOrDefault(nombre, 0.0);
+            double itemTotal = precioUnit * cantidad;
+            cartModel.addElement(String.format("%s x%d — S/ %.2f", nombre, cantidad, itemTotal));
+            subtotal += itemTotal;
+        }
+        double igv = subtotal * IGV;
+        double total = subtotal + igv;
+        subtotalLbl.setText(String.format("Subtotal: S/ %.2f", subtotal));
+        igvLbl.setText(String.format("IGV (18%%): S/ %.2f", igv));
+        totalLbl.setText(String.format("Total: S/ %.2f", total));
+        checkoutBtn.setEnabled(!carrito.isEmpty());
+    }
+
+    private void onCheckout(ActionEvent e) {
+        if (carrito.isEmpty()) return;
+        int confirm = JOptionPane.showConfirmDialog(this, totalLbl.getText() + "\n¿Confirmar compra?", "Confirmar", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            String cliente = JOptionPane.showInputDialog(this, "Nombre del cliente:");
+            if (cliente == null || cliente.trim().isEmpty()) cliente = "Consumidor Final";
+            StringBuilder items = new StringBuilder();
+            double subtotal = 0.0;
+            for (var entry : carrito.entrySet()) {
+                double precioUnit = menuFlat.getOrDefault(entry.getKey(), 0.0);
+                double itemTotal = entry.getValue() * precioUnit;
+                items.append(String.format("%s x%d — S/ %.2f\n", entry.getKey(), entry.getValue(), itemTotal));
+                subtotal += itemTotal;
+            }
+            double igv = subtotal * IGV;
+            double total = subtotal + igv;
+            Venta v = new Venta(0, cliente, items.toString(), total, new Date());
+            ventaDAO.add(v);
+            try (FileWriter fw = new FileWriter("ticket_venta_" + v.getId() + ".txt")) {
+                fw.write(items.toString() + "\nTOTAL: S/ " + total);
+            } catch (Exception ex) { /* ignoramos aquí */ }
+            JOptionPane.showMessageDialog(this, "Compra registrada. Ticket: ticket_venta_" + v.getId() + ".txt");
+            vaciarCarrito();
+        }
+    }
+}
